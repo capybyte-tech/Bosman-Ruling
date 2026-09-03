@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bosman — FIFA Champions by Continent</title>
+<link href="https://fonts.googleapis.com/css2?family=Agdasima:wght@700&family=Roboto:wght@400&family=Albert+Sans:wght@400;600&family=Barlow+Condensed:wght@300;400;700;900&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    width:100%; height:100%; background:#060606;
+    display:flex; align-items:center; justify-content:center; overflow:hidden;
+  }
+  #wrapper {
+    position:relative;
+    width:min(100vw, 177.78vh);
+    height:min(100vh, 56.25vw);
+  }
+  #bg {
+    position:absolute; inset:0;
+    background:url('fondo.png') center/cover no-repeat;
+  }
+  #svg-wrap { position:absolute; inset:0; }
+  svg { width:100%; height:100%; display:block; }
+  #tooltip {
+    position:fixed;
+    background:rgba(5,5,5,0.96);
+    border:1px solid rgba(255,255,255,0.1);
+    border-radius:2px; padding:10px 14px;
+    pointer-events:none; display:none;
+    font-family:'Barlow',sans-serif; font-size:12.5px; color:#fff;
+    min-width:210px; z-index:200; backdrop-filter:blur(10px);
+  }
+  .tt-yr { font-family:'Barlow Condensed',sans-serif; font-size:21px; font-weight:700; margin-bottom:5px; }
+  .tt-win { font-size:11.5px; margin-bottom:2px; font-weight:300; }
+  .tt-sep { border:none; border-top:1px solid rgba(255,255,255,0.1); margin:7px 0; }
+  .tt-row { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:3px; }
+  .tt-lbl { opacity:0.5; font-size:11px; }
+  .tt-val { font-weight:700; font-family:'Barlow Condensed',sans-serif; font-size:17px; }
+  .tt-note { font-size:10px; opacity:0.45; margin-top:5px; font-style:italic; }
+  #filters {
+    position:absolute;
+    display:flex; align-items:center; gap:5px;
+    z-index:50;
+  }
+  .fbtn {
+    font-family:'Barlow Condensed',sans-serif; font-size:10px; font-weight:700;
+    letter-spacing:0.12em; text-transform:uppercase; padding:2px 10px;
+    border:1px solid rgba(255,255,255,0.18); background:transparent;
+    color:rgba(255,255,255,0.35); cursor:pointer; border-radius:1px; transition:all .15s;
+  }
+  .fbtn.on  { background:rgba(255,255,255,0.08); color:#fff; border-color:rgba(255,255,255,0.48); }
+  .fbtn:hover:not(.on) { color:rgba(255,255,255,0.72); border-color:rgba(255,255,255,0.32); }
+</style>
+</head>
+<body>
+<div id="wrapper">
+  <div id="bg"></div>
+  <div id="svg-wrap">
+    <svg id="chart" viewBox="0 0 1440 810" preserveAspectRatio="xMidYMid meet"></svg>
+  </div>
+  <div id="tooltip"></div>
+  <div id="filters">
+    <button class="fbtn on"  data-f="all">All</button>
+    <button class="fbtn"     data-f="Club">Clubs</button>
+    <button class="fbtn"     data-f="Selección">National Teams</button>
+  </div>
+</div>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+// ── CONSTANTS ─────────────────────────────────────────────────────────
+const CA = "#3DC55E", CE = "#D94022";
+const W = 1440, H = 810;
+const ML = 58, MR = 38, MT = 90, MB = 114, BY = H - MB; // BY = 696
+
+// ── DATA ──────────────────────────────────────────────────────────────
+const RAW = [
+  {y:1960,c:"Real Madrid",       cont:"Europa",  e:"Club"},
+  {y:1961,c:"Peñarol",           cont:"América", e:"Club"},
+  {y:1962,c:"Santos",            cont:"América", e:"Club"},
+  {y:1963,c:"Santos",            cont:"América", e:"Club"},
+  {y:1964,c:"Inter Milan",       cont:"Europa",  e:"Club"},
+  {y:1965,c:"Inter Milan",       cont:"Europa",  e:"Club"},
+  {y:1966,c:"Peñarol",           cont:"América", e:"Club"},
+  {y:1967,c:"Racing Club",       cont:"América", e:"Club"},
+  {y:1968,c:"Estudiantes LP",    cont:"América", e:"Club"},
+  {y:1969,c:"AC Milan",          cont:"Europa",  e:"Club"},
+  {y:1970,c:"Feyenoord",         cont:"Europa",  e:"Club"},
+  {y:1971,c:"Nacional",          cont:"América", e:"Club"},
+  {y:1972,c:"Ajax",              cont:"Europa",  e:"Club"},
+  {y:1973,c:"Independiente",     cont:"América", e:"Club"},
+  {y:1974,c:"Atlético Madrid",   cont:"Europa",  e:"Club"},
+  {y:1976,c:"Bayern Munich",     cont:"Europa",  e:"Club"},
+  {y:1977,c:"Boca Juniors",      cont:"América", e:"Club"},
+  {y:1979,c:"Olimpia",           cont:"América", e:"Club"},
+  {y:1980,c:"Nacional",          cont:"América", e:"Club"},
+  {y:1981,c:"Flamengo",          cont:"América", e:"Club"},
+  {y:1982,c:"Peñarol",           cont:"América", e:"Club"},
+  {y:1983,c:"Grêmio",            cont:"América", e:"Club"},
+  {y:1984,c:"Independiente",     cont:"América", e:"Club"},
+  {y:1985,c:"Juventus",          cont:"Europa",  e:"Club"},
+  {y:1986,c:"River Plate",       cont:"América", e:"Club"},
+  {y:1987,c:"Porto",             cont:"Europa",  e:"Club"},
+  {y:1988,c:"Nacional",          cont:"América", e:"Club"},
+  {y:1989,c:"AC Milan",          cont:"Europa",  e:"Club"},
+  {y:1990,c:"AC Milan",          cont:"Europa",  e:"Club"},
+  {y:1991,c:"Red Star Belgrade", cont:"Europa",  e:"Club"},
+  {y:1992,c:"São Paulo",         cont:"América", e:"Club"},
+  {y:1993,c:"São Paulo",         cont:"América", e:"Club"},
+  {y:1994,c:"Vélez Sarsfield",   cont:"América", e:"Club"},
+  {y:1995,c:"Ajax",              cont:"Europa",  e:"Club"},
+  {y:1996,c:"Juventus",          cont:"Europa",  e:"Club"},
+  {y:1997,c:"Borussia Dortmund", cont:"Europa",  e:"Club"},
+  {y:1998,c:"Real Madrid",       cont:"Europa",  e:"Club"},
+  {y:1999,c:"Manchester United", cont:"Europa",  e:"Club"},
+  {y:2000,c:"Boca Juniors",      cont:"América", e:"Club"},
+  {y:2001,c:"Bayern Munich",     cont:"Europa",  e:"Club"},
+  {y:2002,c:"Real Madrid",       cont:"Europa",  e:"Club"},
+  {y:2003,c:"Boca Juniors",      cont:"América", e:"Club"},
+  {y:2004,c:"Porto",             cont:"Europa",  e:"Club"},
+  {y:2005,c:"São Paulo",         cont:"América", e:"Club"},
+  {y:2006,c:"Internacional",     cont:"América", e:"Club"},
+  {y:2007,c:"AC Milan",          cont:"Europa",  e:"Club"},
+  {y:2008,c:"Manchester United", cont:"Europa",  e:"Club"},
+  {y:2009,c:"Barcelona",         cont:"Europa",  e:"Club"},
+  {y:2010,c:"Inter Milan",       cont:"Europa",  e:"Club"},
+  {y:2011,c:"Barcelona",         cont:"Europa",  e:"Club"},
+  {y:2012,c:"Corinthians",       cont:"América", e:"Club"},
+  {y:2013,c:"Bayern Munich",     cont:"Europa",  e:"Club"},
+  {y:2014,c:"Real Madrid",       cont:"Europa",  e:"Club"},
+  {y:2015,c:"Barcelona",         cont:"Europa",  e:"Club"},
+  {y:2016,c:"Real Madrid",       cont:"Europa",  e:"Club"},
+  {y:2017,c:"Real Madrid",       cont:"Europa",  e:"Club"},
+  {y:2018,c:"Real Madrid",       cont:"Europa",  e:"Club"},
+  {y:2019,c:"Liverpool",         cont:"Europa",  e:"Club"},
+  {y:2020,c:"Bayern Munich",     cont:"Europa",  e:"Club"},
+  {y:2021,c:"Chelsea",           cont:"Europa",  e:"Club"},
+  {y:2022,c:"Real Madrid",       cont:"Europa",  e:"Club"},
+  {y:2023,c:"Manchester City",   cont:"Europa",  e:"Club"},
+  {y:2024,c:"Real Madrid",       cont:"Europa",  e:"Club"},
+  // NATIONAL TEAMS
+  {y:1930,c:"Uruguay",   cont:"América", e:"Selección"},
+  {y:1934,c:"Italy",     cont:"Europa",  e:"Selección"},
+  {y:1938,c:"Italy",     cont:"Europa",  e:"Selección"},
+  {y:1950,c:"Uruguay",   cont:"América", e:"Selección"},
+  {y:1954,c:"Germany",   cont:"Europa",  e:"Selección"},
+  {y:1958,c:"Brazil",    cont:"América", e:"Selección"},
+  {y:1962,c:"Brazil",    cont:"América", e:"Selección"},
+  {y:1966,c:"England",   cont:"Europa",  e:"Selección"},
+  {y:1970,c:"Brazil",    cont:"América", e:"Selección"},
+  {y:1974,c:"Germany",   cont:"Europa",  e:"Selección"},
+  {y:1978,c:"Argentina", cont:"América", e:"Selección"},
+  {y:1982,c:"Italy",     cont:"Europa",  e:"Selección"},
+  {y:1986,c:"Argentina", cont:"América", e:"Selección"},
+  {y:1990,c:"Germany",   cont:"Europa",  e:"Selección"},
+  {y:1994,c:"Brazil",    cont:"América", e:"Selección"},
+  {y:1998,c:"France",    cont:"Europa",  e:"Selección"},
+  {y:2002,c:"Brazil",    cont:"América", e:"Selección"},
+  {y:2006,c:"Italy",     cont:"Europa",  e:"Selección"},
+  {y:2010,c:"Spain",     cont:"Europa",  e:"Selección"},
+  {y:2014,c:"Germany",   cont:"Europa",  e:"Selección"},
+  {y:2018,c:"France",    cont:"Europa",  e:"Selección"},
+  {y:2022,c:"Argentina", cont:"América", e:"Selección"},
+];
+
+// Rango continuo: todos los años de 1930 a 2024, con huecos naturales donde no hay datos
+const ALL_YEARS = Array.from({length: 2024 - 1930 + 1}, (_, i) => 1930 + i);
+const xSc = d3.scaleBand().domain(ALL_YEARS).range([ML, W-MR]).paddingInner(0.12);
+const ySc = d3.scaleLinear().domain([0, 75]).range([BY, MT]);
+
+function computeCumul(filter) {
+  const src = filter === "all" ? RAW : RAW.filter(d => d.e === filter);
+  let cA = 0, cE = 0;
+  return ALL_YEARS.map(yr => {
+    const wins = src.filter(d => d.y === yr);
+    cA += wins.filter(d => d.cont === "América").length;
+    cE += wins.filter(d => d.cont === "Europa").length;
+    return { yr, cA, cE, allWins: RAW.filter(d => d.y === yr) };
+  });
+}
+
+// ── SVG + GRADIENTS ───────────────────────────────────────────────────
+const svg  = d3.select("#chart");
+const defs = svg.append("defs");
+
+function mkGrad(id, x1, y1, x2, y2, stops) {
+  const g = defs.append("linearGradient").attr("id",id)
+    .attr("x1",x1).attr("y1",y1).attr("x2",x2).attr("y2",y2);
+  stops.forEach(([off,col,op]) =>
+    g.append("stop").attr("offset",off).attr("stop-color",col).attr("stop-opacity",op));
+}
+mkGrad("vL","0%","0%","100%","0%", [["0%","#000",0.84],["52%","#000",0.04],["100%","#000",0]]);
+mkGrad("vT","0%","0%","0%","100%", [["0%","#000",0.92],["46%","#000",0]]);
+mkGrad("vB","0%","0%","0%","100%", [["0%","#000",0],  ["100%","#000",0.62]]);
+
+svg.append("rect").attr("width",W).attr("height",H).attr("fill","url(#vL)");
+svg.append("rect").attr("width",W).attr("height",H).attr("fill","url(#vT)");
+svg.append("rect").attr("width",W).attr("height",H).attr("fill","url(#vB)");
+
+// ── TITLE + RULE ──────────────────────────────────────────────────────
+svg.append("text").attr("x",ML).attr("y",72)
+  .attr("font-family","'Agdasima',sans-serif")
+  .attr("font-size",36).attr("font-weight","700")
+  .attr("fill","#fff").attr("letter-spacing","0.02em")
+  .text("Bosman Ruling: FIFA World Champions by Continent");
+
+svg.append("line")
+  .attr("x1",ML).attr("y1",82).attr("x2",W-MR).attr("y2",82)
+  .attr("stroke","rgba(255,255,255,0.16)").attr("stroke-width",0.8);
+
+// ── LEGEND ───────────────────────────────────────────────────────────
+// Layout: [SA icon] [South America] [gap] [EU icon] [Europe]
+// "Europe" última letra termina en x=W-MR=1402
+// Barlow Condensed 18px: "Europe"≈52px, "South America"≈112px, icono=22px
+{
+  const lFS  = 18;
+  const iSz  = 22;
+  const yText = 72;                    // baseline = mismo que el título
+  const yIco  = yText - iSz + 4;      // top del icono alineado con cap-height
+
+  // Posiciones hardcodeadas desde la derecha:
+  const xEurEnd  = W - MR;            // 1402 — borde derecho de "Europe"
+  const xEurIco  = xEurEnd - 52 - 8;  // icono EU: a la izquierda del texto
+  const xSAEnd   = xEurIco - 20;      // borde derecho de "South America"
+  const xSAIco   = xSAEnd  - 112 - 8; // icono SA
+
+  // South America
+  svg.append("image").attr("href","south.png")
+    .attr("x", xSAIco).attr("y", yIco).attr("width", iSz).attr("height", iSz);
+  svg.append("text").attr("x", xSAIco + iSz + 5).attr("y", yText)
+    .attr("font-family","'Barlow Condensed',sans-serif")
+    .attr("font-size", lFS).attr("fill","#fff")
+    .text("South America");
+
+  // Europe
+  svg.append("image").attr("href","eur.png")
+    .attr("x", xEurIco).attr("y", yIco).attr("width", iSz).attr("height", iSz);
+  svg.append("text").attr("x", xEurIco + iSz + 5).attr("y", yText)
+    .attr("font-family","'Barlow Condensed',sans-serif")
+    .attr("font-size", lFS).attr("fill","#fff")
+    .text("Europe");
+}
+
+// ── BODY TEXT (Roboto Regular 30, wide column) ────────────────────────
+function wrapText(txt, x, y, maxW, lh, fs, fw, fill) {
+  const words = txt.split(" ");
+  const el = svg.append("text")
+    .attr("font-family","'Roboto',sans-serif")
+    .attr("font-size",fs).attr("font-weight",fw).attr("fill",fill);
+  const cpl = Math.floor(maxW / (fs * 0.52));
+  let line = [], ts = el.append("tspan").attr("x",x).attr("y",y);
+  for (const w of words) {
+    line.push(w);
+    if (line.join(" ").length > cpl && line.length > 1) {
+      line.pop(); ts.text(line.join(" ")); line = [w];
+      ts = el.append("tspan").attr("x",x).attr("dy",lh);
+    }
+  }
+  ts.text(line.join(" "));
+}
+
+// Textos en grupo con transform dinámico (positionFilters los mueve)
+const textG = svg.append("g").attr("id","body-text");
+const _origWrapSvg = wrapText;
+function wrapInGroup(g, txt, x, y, maxW, lh, fs, fw, fill) {
+  const words = txt.split(" ");
+  const el = g.append("text")
+    .attr("font-family","'Roboto',sans-serif")
+    .attr("font-size",fs).attr("font-weight",fw).attr("fill",fill);
+  const cpl = Math.floor(maxW / (fs * 0.52));
+  let line = [], ts = el.append("tspan").attr("x",x).attr("y",y);
+  for (const w of words) {
+    line.push(w);
+    if (line.join(" ").length > cpl && line.length > 1) {
+      line.pop(); ts.text(line.join(" ")); line = [w];
+      ts = el.append("tspan").attr("x",x).attr("dy",lh);
+    }
+  }
+  ts.text(line.join(" "));
+}
+
+// Posiciones base (y=0 dentro del grupo, separación entre párrafos = 110)
+const P1_Y = 16, P2_Y = 126;  // p2 - p1 = 110 (espacio entre párrafos)
+wrapInGroup(textG, "The Bosman Ruling (1995) allowed the free movement of players within the European Union, opening the door for clubs to field more foreign players in their squads. Before the ruling, South American clubs and national teams held a 7-title advantage over their European counterparts, a 28.57% symmetric edge.",
+  ML, P1_Y, 660, 23, 16, 400, "rgba(255,255,255,0.87)");
+wrapInGroup(textG, "Since then, European clubs and national teams have been overwhelmingly dominant, accumulating 29 championships post-Bosman compared to just 7 for South American sides.",
+  ML, P2_Y, 660, 23, 16, 400, "rgba(255,255,255,0.87)");
+
+// ── BASELINE ─────────────────────────────────────────────────────────
+svg.append("line")
+  .attr("x1",ML).attr("y1",BY).attr("x2",W-MR).attr("y2",BY)
+  .attr("stroke","rgba(255,255,255,0.42)").attr("stroke-width",1);
+
+// ── REFERENCE LINE HELPER ─────────────────────────────────────────────
+function refTick(rx, lineY1) {
+  const tickW = 14;
+  svg.append("line")
+    .attr("x1", rx - tickW/2).attr("y1", lineY1)
+    .attr("x2", rx + tickW/2).attr("y2", lineY1)
+    .attr("stroke","rgba(255,255,255,0.55)").attr("stroke-width",1.2);
+  svg.append("line")
+    .attr("x1",rx).attr("y1",lineY1)
+    .attr("x2",rx).attr("y2",BY)
+    .attr("stroke","rgba(255,255,255,0.45)").attr("stroke-width",1.1);
+}
+
+// ── 1930 — anchored hard left at ML so it never overlaps 1960 ─────────
+{
+  const yr  = 1930;
+  const rx  = xSc(yr) + xSc.bandwidth()/2;
+  const ax  = ML;
+  const yrY = 534;
+
+  // year — Albert Sans SemiBold 17
+  svg.append("text").attr("x",ax).attr("y",yrY)
+    .attr("font-family","'Albert Sans',sans-serif")
+    .attr("font-size",17).attr("font-weight","600")
+    .attr("letter-spacing","0.07em")
+    .attr("fill","#fff").text(yr);
+  svg.append("image").attr("href","world.png")
+    .attr("x",ax+52).attr("y",yrY-15).attr("width",22).attr("height",22);
+
+  // "First" — Albert Sans Regular 17
+  svg.append("text").attr("x",ax).attr("y",yrY+22)
+    .attr("font-family","'Albert Sans',sans-serif")
+    .attr("font-size",17).attr("font-weight","400")
+    .attr("letter-spacing","0.07em")
+    .attr("fill","rgba(255,255,255,0.82)").text("First");
+
+  // "WORLD CUP" — Albert Sans SemiBold 29
+  svg.append("text").attr("x",ax).attr("y",yrY+54)
+    .attr("font-family","'Albert Sans',sans-serif")
+    .attr("font-size",29).attr("font-weight","600")
+    .attr("letter-spacing","0.07em")
+    .attr("fill","#fff").text("WORLD CUP");
+
+  refTick(rx, yrY + 64);
+}
+
+// ── 1960 — right of its line ──────────────────────────────────────────
+{
+  const yr  = 1960;
+  const rx  = xSc(yr) + xSc.bandwidth()/2;
+  const ax  = rx + 8;
+  const yrY = 414;
+
+  // year — Albert Sans SemiBold 17
+  svg.append("text").attr("x",ax).attr("y",yrY)
+    .attr("font-family","'Albert Sans',sans-serif")
+    .attr("font-size",17).attr("font-weight","600")
+    .attr("letter-spacing","0.07em")
+    .attr("fill","#fff").text(yr);
+  svg.append("image").attr("href","world.png")
+    .attr("x",ax+52).attr("y",yrY-15).attr("width",22).attr("height",22);
+
+  // "First" — Albert Sans Regular 17
+  svg.append("text").attr("x",ax).attr("y",yrY+22)
+    .attr("font-family","'Albert Sans',sans-serif")
+    .attr("font-size",17).attr("font-weight","400")
+    .attr("letter-spacing","0.07em")
+    .attr("fill","rgba(255,255,255,0.82)").text("First");
+
+  // "INTERCONTINENTAL" — Albert Sans SemiBold 29
+  svg.append("text").attr("x",ax).attr("y",yrY+54)
+    .attr("font-family","'Albert Sans',sans-serif")
+    .attr("font-size",29).attr("font-weight","600")
+    .attr("letter-spacing","0.07em")
+    .attr("fill","#fff").text("INTERCONTINENTAL");
+
+  refTick(rx, yrY + 64);
+}
+
+// ── 1995 + STATS BLOCK — sección unificada ────────────────────────────
+{
+  const rx  = xSc(1995) + xSc.bandwidth()/2;
+  const yrY = MT + 26;
+
+  // ── Texto del cartel ─────────────────────────────────────────────
+  svg.append("text").attr("x",rx).attr("y",yrY)
+    .attr("font-family","'Albert Sans',sans-serif")
+    .attr("font-size",17).attr("font-weight","600")
+    .attr("letter-spacing","0.07em")
+    .attr("fill","#fff").attr("text-anchor","middle").text(1995);
+
+  svg.append("text").attr("x",rx).attr("y",yrY+34)
+    .attr("font-family","'Albert Sans',sans-serif")
+    .attr("font-size",29).attr("font-weight","600")
+    .attr("letter-spacing","0.07em")
+    .attr("fill","#fff").attr("text-anchor","middle").text("BOSMAN");
+
+  svg.append("text").attr("x",rx).attr("y",yrY+54)
+    .attr("font-family","'Albert Sans',sans-serif")
+    .attr("font-size",17).attr("font-weight","400")
+    .attr("letter-spacing","0.07em")
+    .attr("fill","rgba(255,255,255,0.75)").attr("text-anchor","middle").text("Ruling");
+
+  // ── Línea + Martillo ─────────────────────────────────────────────
+  const tickY = yrY + 64;
+  const hmR   = 28;              // radio del círculo del martillo
+  const hmCY  = tickY + 80;     // centro Y del martillo
+
+  // tick horizontal
+  svg.append("line")
+    .attr("x1",rx-12).attr("y1",tickY).attr("x2",rx+12).attr("y2",tickY)
+    .attr("stroke","rgba(255,255,255,0.55)").attr("stroke-width",1.2);
+  // línea superior (tick → borde martillo)
+  svg.append("line")
+    .attr("x1",rx).attr("y1",tickY).attr("x2",rx).attr("y2",hmCY-hmR-1)
+    .attr("stroke","rgba(255,255,255,0.45)").attr("stroke-width",1.1);
+  // icono martillo centrado en la línea
+  svg.append("image").attr("href","hammer.png")
+    .attr("x",rx-hmR).attr("y",hmCY-hmR)
+    .attr("width",hmR*2).attr("height",hmR*2);
+  // línea inferior (borde martillo → baseline)
+  svg.append("line")
+    .attr("x1",rx).attr("y1",hmCY+hmR+1).attr("x2",rx).attr("y2",BY)
+    .attr("stroke","rgba(255,255,255,0.45)").attr("stroke-width",1.1);
+
+  // ── Stats grid ───────────────────────────────────────────────────
+  const armGap = 36;
+  const colGap = 100;
+  const ic     = 63;     // 84 * 0.75
+  const nFS    = 32;
+  const lFS    = 9;
+  const hFS    = 10;
+
+  const cSAL = rx - armGap - hmR - colGap - 11;
+  const cEUL = rx - armGap - hmR - 11;
+  const cSAR = rx + armGap + hmR;
+  const cEUR = rx + armGap + hmR + colGap;
+
+  // icono centrado en hmCY, número debajo, Titles debajo del número
+  const yHdr = hmCY - 52;
+  const yIco = hmCY - ic/2;   // icono centrado verticalmente en hmCY
+  const yNum = hmCY + ic/2 + 20;  // número debajo del icono
+  const yLbl = yNum + 14;     // "Titles" debajo del número
+
+  function cell(cx, lbl, color, iconHref) {
+    svg.append("image").attr("href", iconHref)
+      .attr("x", cx - ic/2).attr("y", yIco)
+      .attr("width", ic).attr("height", ic);
+    svg.append("text").attr("x", cx).attr("y", yNum)
+      .attr("font-family","'Albert Sans',sans-serif")
+      .attr("font-size", nFS).attr("font-weight","600")
+      .attr("fill", color).attr("text-anchor","middle").text(lbl);
+    svg.append("text").attr("x", cx).attr("y", yLbl)
+      .attr("font-family","'Albert Sans',sans-serif").attr("font-size", lFS)
+      .attr("fill", color).attr("text-anchor","middle").text("Titles");
+  }
+
+  svg.append("text").attr("x",(cSAL+cEUL)/2).attr("y", yHdr)
+    .attr("font-family","'Albert Sans',sans-serif").attr("font-size", hFS).attr("font-weight","400")
+    .attr("fill","rgba(255,255,255,0.6)").attr("text-anchor","middle")
+    .text("Pre-Bosman Period");
+  svg.append("text").attr("x",(cSAR+cEUR)/2).attr("y", yHdr)
+    .attr("font-family","'Albert Sans',sans-serif").attr("font-size", hFS).attr("font-weight","400")
+    .attr("fill","rgba(255,255,255,0.6)").attr("text-anchor","middle")
+    .text("All-time Total");
+
+  cell(cSAL, "28", CA, "south.png");
+  cell(cEUL, "21", CE, "eur.png");
+  cell(cSAR, "35", CA, "south.png");
+  cell(cEUR, "50", CE, "eur.png");
+
+  // ── Overlays interactivos sobre cada celda ───────────────────────
+  const cellH = yLbl - yIco + 16;
+  const cellW = ic + 8;
+
+  function addCellOverlay(cx, continent, preBosman) {
+    svg.append("rect")
+      .attr("x", cx - cellW/2).attr("y", yIco - 4)
+      .attr("width", cellW).attr("height", cellH)
+      .attr("fill","transparent").attr("rx",3)
+      .style("cursor","pointer")
+      .on("mouseenter", function() {
+        d3.select(this).attr("stroke","rgba(255,255,255,0.25)").attr("stroke-width",1);
+        dimBars(continent, preBosman);
+      })
+      .on("mouseleave", function() {
+        d3.select(this).attr("stroke","none");
+        dimBars(null, false);
+      });
+  }
+
+  addCellOverlay(cSAL, "CA", true);   // Pre-Bosman SA → solo verde ≤1994
+  addCellOverlay(cEUL, "CE", true);   // Pre-Bosman EU → solo rojo ≤1994
+  addCellOverlay(cSAR, "CA", false);  // All-time SA   → toda la verde
+  addCellOverlay(cEUR, "CE", false);  // All-time EU   → toda la roja
+}
+
+// ── BRACKETS ─────────────────────────────────────────────────────────
+function bracket(y0, y1, lbl) {
+  const bY = BY+28, lY = BY+46, cap = 5;
+  const sc = "rgba(255,255,255,0.38)";
+  const x0 = xSc(y0), x1 = xSc(y1)+xSc.bandwidth(), mx = (x0+x1)/2;
+  svg.append("line").attr("x1",x0).attr("y1",bY).attr("x2",x1).attr("y2",bY).attr("stroke",sc).attr("stroke-width",1);
+  svg.append("line").attr("x1",x0).attr("y1",bY-cap).attr("x2",x0).attr("y2",bY+cap).attr("stroke",sc).attr("stroke-width",1);
+  svg.append("line").attr("x1",x1).attr("y1",bY-cap).attr("x2",x1).attr("y2",bY+cap).attr("stroke",sc).attr("stroke-width",1);
+  svg.append("text").attr("x",mx).attr("y",lY).attr("text-anchor","middle")
+    .attr("font-family","'Barlow Condensed',sans-serif").attr("font-size",12).attr("font-weight","300")
+    .attr("fill","rgba(255,255,255,0.55)").text(lbl);
+}
+bracket(1960, 2008, "South American Dominance");
+bracket(2009, 2024, "European Dominance");
+
+// ── BARS + HOVER ──────────────────────────────────────────────────────
+const barsG   = svg.append("g");
+const hoverG  = svg.append("g");
+const tooltip = document.getElementById("tooltip");
+const wrapper = document.getElementById("wrapper");
+
+// keepCont: "CA" | "CE" | null. preBosman: true = solo años ≤1994, false = todos
+function dimBars(keepCont, preBosman) {
+  if (!keepCont) {
+    barsG.selectAll(".bar-ca,.bar-ce").attr("opacity", 0.93);
+    return;
+  }
+  const DIM = 0.06, KEEP = 0.93;
+  if (keepCont === "CA") {
+    barsG.selectAll(".bar-ce").attr("opacity", DIM);
+    barsG.selectAll(".bar-ca").attr("opacity", function() {
+      return preBosman && +d3.select(this).attr("data-yr") > 1994 ? DIM : KEEP;
+    });
+  } else {
+    barsG.selectAll(".bar-ca").attr("opacity", DIM);
+    barsG.selectAll(".bar-ce").attr("opacity", function() {
+      return preBosman && +d3.select(this).attr("data-yr") > 1994 ? DIM : KEEP;
+    });
+  }
+}
+
+function drawBars(filter, animate) {
+  const data = computeCumul(filter);
+  const bw = xSc.bandwidth(), hw = bw / 2;
+  barsG.selectAll("*").remove();
+  hoverG.selectAll("*").remove();
+
+  data.forEach((d, i) => {
+    const bx    = xSc(d.yr);
+    const delay = animate ? i * 5 : 0;
+
+    const aH = BY - ySc(d.cA), aY = ySc(d.cA);
+    const bA  = barsG.append("rect").attr("class","bar-ca").attr("data-yr", d.yr)
+      .attr("x",bx).attr("width",hw-0.8).attr("fill",CA).attr("opacity",0.93)
+      .attr("y", animate ? BY : aY).attr("height", animate ? 0 : aH);
+    if (animate) bA.transition().duration(900).ease(d3.easeCubicOut).delay(delay).attr("y",aY).attr("height",aH);
+
+    const eH = BY - ySc(d.cE), eY = ySc(d.cE);
+    const bE  = barsG.append("rect").attr("class","bar-ce").attr("data-yr", d.yr)
+      .attr("x",bx+hw).attr("width",hw-0.8).attr("fill",CE).attr("opacity",0.93)
+      .attr("y", animate ? BY : eY).attr("height", animate ? 0 : eH);
+    if (animate) bE.transition().duration(900).ease(d3.easeCubicOut).delay(delay).attr("y",eY).attr("height",eH);
+
+    // Hover rect solo sobre la zona donde hay barras reales
+    const hasBar = d.cA > 0 || d.cE > 0;
+    if (hasBar) {
+      const hoverTop = Math.min(d.cA > 0 ? aY : BY, d.cE > 0 ? eY : BY);
+      hoverG.append("rect")
+        .attr("x",bx).attr("y",hoverTop).attr("width",bw).attr("height",BY-hoverTop)
+        .attr("fill","transparent")
+        .on("mouseenter", function() { d3.select(this).attr("fill","rgba(255,255,255,0.05)"); })
+        .on("mouseleave", function() { d3.select(this).attr("fill","transparent"); tooltip.style.display="none"; })
+        .on("mousemove", ev => showTip(ev, d));
+    }
+  });
+}
+
+function showTip(ev, d) {
+  const aW = d.allWins.filter(w => w.cont === "América");
+  const eW = d.allWins.filter(w => w.cont === "Europa");
+  const tag = w => w.e === "Selección" ? " ★" : "";
+
+  let h = `<div class="tt-yr">${d.yr}</div>`;
+  if (aW.length) h += `<div class="tt-win" style="color:${CA}">▶ ${aW.map(w => w.c+tag(w)).join(", ")}</div>`;
+  if (eW.length) h += `<div class="tt-win" style="color:${CE}">▶ ${eW.map(w => w.c+tag(w)).join(", ")}</div>`;
+  if (!aW.length && !eW.length) h += `<div class="tt-win" style="opacity:0.4">No title this year</div>`;
+  h += `<hr class="tt-sep">`;
+  h += `<div class="tt-row"><span class="tt-lbl">Accum. South America</span><span class="tt-val" style="color:${CA}">${d.cA}</span></div>`;
+  h += `<div class="tt-row"><span class="tt-lbl">Accum. Europe</span><span class="tt-val" style="color:${CE}">${d.cE}</span></div>`;
+
+  const diff = d.cA - d.cE;
+  if (diff !== 0) {
+    const ld = diff > 0 ? "South America" : "Europe";
+    h += `<div class="tt-note" style="color:${diff>0?CA:CE}">Lead — ${ld}: +${Math.abs(diff)}</div>`;
+  }
+  if (d.yr === 1995) h += `<div class="tt-note">⚖️ Year of the Bosman Ruling</div>`;
+  if (d.yr === 1930) h += `<div class="tt-note">🏆 First FIFA World Cup</div>`;
+  if (d.yr === 1960) h += `<div class="tt-note">🌍 First Intercontinental Cup</div>`;
+  h += `<div class="tt-note" style="margin-top:5px">★ = National Team</div>`;
+
+  tooltip.innerHTML = h;
+  tooltip.style.display = "block";
+
+  const rect = wrapper.getBoundingClientRect();
+  const scX  = rect.width / W;
+  let lft = xSc(d.yr) * scX + rect.left + (xSc.bandwidth() * scX) + 6;
+  let top = ev.clientY - 20;
+  if (lft + tooltip.offsetWidth + 12 > window.innerWidth)  lft -= tooltip.offsetWidth + (xSc.bandwidth() * scX) + 12;
+  if (top + tooltip.offsetHeight + 12 > window.innerHeight) top  = window.innerHeight - tooltip.offsetHeight - 12;
+  tooltip.style.left = lft + "px";
+  tooltip.style.top  = top  + "px";
+}
+
+// ── FILTERS ───────────────────────────────────────────────────────────
+document.querySelectorAll(".fbtn").forEach(b => {
+  b.addEventListener("click", function() {
+    document.querySelectorAll(".fbtn").forEach(x => x.classList.remove("on"));
+    this.classList.add("on");
+    drawBars(this.dataset.f, false);
+  });
+});
+
+// Posicionar los botones junto al título (coordenadas SVG → CSS px)
+function positionFilters() {
+  const rect   = wrapper.getBoundingClientRect();
+  const scX    = rect.width  / W;
+  const scY    = rect.height / H;
+
+  // Top de "1995": baseline=MT+26=116, Albert Sans 17px → top caps = 99 SVG
+  const btnTopSVG = MT + 26 - 17;   // = 99
+  const ruleSVG   = 82;
+  const marginSVG = btnTopSVG - ruleSVG;  // = 17 SVG — margen simétrico
+
+  const el = document.getElementById("filters");
+  el.style.left = (ML * scX) + "px";
+  el.style.top  = (btnTopSVG * scY) + "px";
+  el.style.height = "auto";
+
+  // Texto empieza: bottom de botones + mismo margen
+  const btnBottomSVG = btnTopSVG + el.offsetHeight / scY;
+  const textTopSVG   = btnBottomSVG + marginSVG;
+
+  // Mover el grupo SVG de texto
+  const tg = document.getElementById("body-text");
+  if (tg) tg.setAttribute("transform", `translate(0, ${textTopSVG})`);
+}
+
+positionFilters();
+window.addEventListener("resize", positionFilters);
+// Re-run after render so offsetHeight is accurate
+requestAnimationFrame(positionFilters);
+
+// ── INIT ──────────────────────────────────────────────────────────────
+drawBars("all", true);
+</script>
+</body>
+</html>
